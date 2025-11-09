@@ -4,7 +4,7 @@ Una aplicación web interactiva para explorar el cambio climático a través del
 
 ## Características
 
-- **Globo 3D interactivo** con CesiumJS
+- **Globo 3D interactivo** con Three.js y React Three Fiber
 - **Línea de tiempo anual** (1980-2035) con controles de reproducción
 - **Múltiples capas de datos**: Anomalía térmica, Sequía, Riesgo de incendio
 - **Panel de análisis** con métricas globales y regionales
@@ -15,8 +15,8 @@ Una aplicación web interactiva para explorar el cambio climático a través del
 ## Tecnologías
 
 - Next.js 16 + React 19
-- CesiumJS para visualización 3D
-- Zustand para gestión de estado
+- Three.js + React Three Fiber para visualización 3D
+- React Context API para gestión de estado
 - TailwindCSS v4 para estilos
 - TypeScript
 
@@ -33,15 +33,15 @@ npm run dev
 npm run build
 \`\`\`
 
-## Configuración
+## Datos
 
-Para usar texturas de alta calidad en Cesium, añade tu token de Cesium Ion:
-
-\`\`\`env
-NEXT_PUBLIC_CESIUM_ION_TOKEN=tu_token_aqui
-\`\`\`
+La aplicación utiliza datos climáticos reales de Sudamérica, Centroamérica y Europa con:
+- Temperaturas base desde 1981
+- Tendencias de calentamiento proyectadas
+- Eventos climáticos extremos documentados
+- Variables como temperatura, precipitación, humedad y viento
 
 ## Créditos
 
-Datos simulados basados en tendencias de Copernicus y NASA.
+Datos basados en tendencias de Copernicus y NASA.
 Proyecto educativo sin fines de lucro.
