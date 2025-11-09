@@ -1,3 +1,5 @@
+https://youtu.be/2ygR1EocMTI?si=BB_RTiXjy7AFirGM
+
 EcoVig-IA es una plataforma educativa que combina ciencia, tecnología e impacto social para visualizar la evolución del cambio climático a lo largo del tiempo.
 A través de un globo 3D interactivo, los usuarios pueden explorar cómo el planeta se calienta, región por región, con datos reales y explicaciones accesibles.
 
