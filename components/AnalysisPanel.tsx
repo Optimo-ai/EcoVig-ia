@@ -4,6 +4,7 @@ import { useClimateStore } from "@/hooks/useClimateStore"
 import { StatCard } from "@/components/StatCard"
 import { ThermometerSun, TrendingUp, MapPin, AlertTriangle } from "lucide-react"
 import climateData from "@/lib/climate-data.json"
+import { getRegionsWithAnomalies } from "@/lib/climateDataLoader"
 
 const REGION_CITIES = {
   Sudamérica: [
@@ -24,56 +25,39 @@ const REGION_CITIES = {
 }
 
 export function AnalysisPanel() {
-  const { year, selectedPoint } = useClimateStore()
+  const { year, selection } = useClimateStore()
+  const regions = getRegionsWithAnomalies(year) // <-- Mueve aquí la llamada
 
-  const region = selectedPoint
-    ? climateData.regions.find((r) => {
-        const cities = REGION_CITIES[r.name as keyof typeof REGION_CITIES] || []
-        return cities.some((c) => Math.abs(c.lat - selectedPoint.lat) < 10 && Math.abs(c.lon - selectedPoint.lon) < 10)
-      })
-    : climateData.regions[0]
+  const regionName = typeof selection === "string" ? selection : selection?.region
+  const region = climateData.regions.find((r) => r.name === regionName) || climateData.regions[0]
 
   if (!region) return null
 
   const variable = region.variables.find((v) => v.id === "t2m")
   if (!variable) return null
 
-  // Calculate temperature for the year
+  // Calcula temperatura y anomalía para el año seleccionado
   const yearsSince1981 = year - 1981
   const currentTemp = variable.baseline_1981_2010_c + variable.trend_c_per_year * yearsSince1981
   const anomaly = currentTemp - variable.baseline_1981_2010_c
-
-  const cities = REGION_CITIES[region.name as keyof typeof REGION_CITIES] || []
-  const city =
-    selectedPoint && cities.length > 0
-      ? cities.reduce((closest, c) => {
-          const distCurrent = Math.sqrt(Math.pow(c.lat - selectedPoint.lat, 2) + Math.pow(c.lon - selectedPoint.lon, 2))
-          const distClosest = Math.sqrt(
-            Math.pow(closest.lat - selectedPoint.lat, 2) + Math.pow(closest.lon - selectedPoint.lon, 2),
-          )
-          return distCurrent < distClosest ? c : closest
-        }, cities[0])
-      : cities[0]
 
   const extremeEventsCount =
     variable.extremes.high_anomaly_months_gt_2sigma.length + variable.extremes.low_anomaly_months_lt_minus_2sigma.length
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar space-y-4">
-      {/* Region Header */}
       <div className="space-y-2">
         <div className="flex items-start gap-2">
           <MapPin className="h-5 w-5 text-[#10B981] mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <h2 className="text-xl font-bold text-white">{region.name}</h2>
             <p className="text-sm text-white/60">
-              {city.name} ({city.lat.toFixed(2)}°, {city.lon.toFixed(2)}°)
+              Temperatura base: {variable.baseline_1981_2010_c.toFixed(2)}°C
             </p>
           </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard
           icon={<ThermometerSun className="h-5 w-5" />}
@@ -89,7 +73,6 @@ export function AnalysisPanel() {
         />
       </div>
 
-      {/* Trend Visualization */}
       <div className="backdrop-blur-sm bg-white/5 border border-white/10 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-white mb-3">Tendencia de Calentamiento</h3>
         <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
@@ -106,7 +89,6 @@ export function AnalysisPanel() {
         </div>
       </div>
 
-      {/* Regional Analysis */}
       <div className="backdrop-blur-sm bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-white">Análisis Regional</h3>
         <p className="text-sm text-white/80 leading-relaxed">
@@ -114,8 +96,6 @@ export function AnalysisPanel() {
           <span className="text-white font-semibold">+{(variable.trend_c_per_year * 10).toFixed(3)}°C por década</span>.
           La temperatura base histórica (1981-2010) es de {variable.baseline_1981_2010_c.toFixed(2)}°C.
         </p>
-
-        {/* Extreme Events */}
         {extremeEventsCount > 0 && (
           <div className="pt-3 border-t border-white/10">
             <h4 className="text-xs font-semibold text-white/70 mb-2 flex items-center gap-2">

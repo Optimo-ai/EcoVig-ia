@@ -7,15 +7,13 @@ const nextConfig = {
     
     return config;
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
   },
+  turbopack: {},
 };
 
 export default nextConfig;

@@ -1,44 +1,29 @@
 "use client"
 
-import { useRef, useEffect, useState } from "react"
-import { Canvas, useFrame, useThree } from "@react-three/fiber"
+import { useRef, useEffect, useState, useMemo } from "react"
+import { Canvas, useFrame } from "@react-three/fiber"
 import { OrbitControls } from "@react-three/drei"
 import * as THREE from "three"
 import { useClimateStore } from "@/hooks/useClimateStore"
 import { getColorForValue } from "@/lib/colorScales"
+import { getRegionsWithAnomalies } from "@/lib/climateDataLoader"
+
+const HEAT_COLORS = [
+  "#3b82f6", // azul frío
+  "#60a5fa", // azul claro
+  "#fbbf24", // amarillo
+  "#f97316", // naranja
+  "#dc2626", // rojo caliente
+]
 
 function DataPoints() {
-  const { data, layer, setSelection } = useClimateStore()
+  const { data, setSelection, selection, layer } = useClimateStore()
+  const [hoverRegion, setHoverRegion] = useState<string | null>(null)
   const pointsRef = useRef<THREE.Group>(null)
-  const raycaster = useRef(new THREE.Raycaster())
-  const { camera, gl } = useThree()
 
-  useEffect(() => {
-    const handleClick = (event: MouseEvent) => {
-      if (!pointsRef.current) return
-
-      const rect = gl.domElement.getBoundingClientRect()
-      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-
-      raycaster.current.setFromCamera({ x, y }, camera)
-      const intersects = raycaster.current.intersectObjects(pointsRef.current.children)
-
-      if (intersects.length > 0) {
-        const point = intersects[0].object.userData
-        setSelection({
-          lat: point.lat,
-          lon: point.lon,
-          name: point.region,
-          value: point.value,
-          region: point.region,
-        })
-      }
-    }
-
-    gl.domElement.addEventListener("click", handleClick)
-    return () => gl.domElement.removeEventListener("click", handleClick)
-  }, [camera, gl, setSelection])
+  const handlePointerOver = (region: string) => setHoverRegion(region)
+  const handlePointerOut = () => setHoverRegion(null)
+  const handleClick = (region: string) => setSelection(region)
 
   return (
     <group ref={pointsRef}>
@@ -51,15 +36,24 @@ function DataPoints() {
         const z = radius * Math.sin(phi) * Math.sin(theta)
         const y = radius * Math.cos(phi)
 
-        const color = getColorForValue(layer, datum.value)
+        const isHovered = hoverRegion === datum.region
+        const isSelected = selection === datum.region
+        const color = isSelected
+          ? "#FFD700"
+          : isHovered
+          ? "#00BFFF"
+          : getColorForValue(layer, datum.value)
 
         return (
           <mesh
             key={`${index}-${datum.lat}-${datum.lon}`}
             position={[x, y, z]}
             userData={{ lat: datum.lat, lon: datum.lon, value: datum.value, region: datum.region }}
+            onPointerOver={() => handlePointerOver(datum.region)}
+            onPointerOut={handlePointerOut}
+            onClick={() => handleClick(datum.region)}
           >
-            <sphereGeometry args={[0.04, 8, 8]} />
+            <sphereGeometry args={[isHovered ? 0.06 : 0.04, 8, 8]} />
             <meshBasicMaterial color={color} transparent opacity={0.9} />
           </mesh>
         )
@@ -78,22 +72,12 @@ function Earth() {
     setEarthTexture(texture)
   }, [])
 
-  // Very slow continuous rotation like Google Earth
-  useFrame(() => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += 0.0003 // Very slow rotation
-    }
-    if (cloudsRef.current) {
-      cloudsRef.current.rotation.y += 0.0005 // Clouds rotate slightly faster
-    }
-  })
-
   // Create a realistic Earth material with continents
   const earthMaterial = earthTexture
     ? new THREE.MeshPhongMaterial({
         map: earthTexture,
         bumpScale: 0.05,
-        specular: new THREE.Color("#222222"),
+        specular: new THREE.Color("#292828ff"),
         shininess: 15,
       })
     : new THREE.MeshPhongMaterial({
@@ -228,9 +212,129 @@ function Stars() {
   )
 }
 
+function latLonToXYZ(lat: number, lon: number, radius = 2.13) {
+  const phi = (90 - lat) * (Math.PI / 180)
+  const theta = (lon + 180) * (Math.PI / 180)
+  const x = -(radius * Math.sin(phi) * Math.cos(theta))
+  const y = radius * Math.cos(phi)
+  const z = radius * Math.sin(phi) * Math.sin(theta)
+  return [x, y, z]
+}
+
+function lerpColor(a: string, b: string, t: number) {
+  const ca = new THREE.Color(a)
+  const cb = new THREE.Color(b)
+  return ca.lerp(cb, t)
+}
+
+function getHeatGradientColor(temp: number, min = 10, max = 30) {
+  // Normaliza la temperatura entre min y max
+  const t = Math.max(0, Math.min(1, (temp - min) / (max - min)))
+  // Divide la escala en 4 tramos
+  const idx = Math.floor(t * (HEAT_COLORS.length - 1))
+  const localT = (t * (HEAT_COLORS.length - 1)) - idx
+  return lerpColor(HEAT_COLORS[idx], HEAT_COLORS[idx + 1] || HEAT_COLORS[idx], localT)
+}
+
+function HeatSurfaceRegion({ lat, lon, temperature, anomaly }: { lat: number; lon: number; temperature: number; anomaly: number }) {
+  const [x, y, z] = latLonToXYZ(lat, lon, 2)
+  const geometry = useMemo(() => {
+    const radius = 0.7
+    const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, 32, 32)
+    const maxHeight = temperature > 10 ? Math.max(0.18, 0.18 + (temperature - 15) * 0.07) : 0.18
+    const r2 = radius * radius
+    const exponent = 2.8
+
+    // Altura y color
+    const colors = []
+    for (let i = 0; i < geo.attributes.position.count; i++) {
+      const vx = geo.attributes.position.getX(i)
+      const vy = geo.attributes.position.getY(i)
+      const dist2 = vx * vx + vy * vy
+      let z = 0
+      let t = 0
+      let alpha = 0
+
+      if (dist2 <= r2) {
+        const base = 1 - dist2 / r2
+        z = maxHeight * Math.pow(base, exponent)
+        t = maxHeight > 0 ? z / maxHeight : 0
+        // Difumina el borde: alpha bajo cerca del borde
+        alpha = Math.max(0, Math.min(1, base * 1.2))
+      }
+
+      geo.attributes.position.setZ(i, z)
+      const color = getHeatGradientColor(temperature)
+      const tipColor = lerpColor(color.getStyle(), "#dc2626", Math.max(0, Math.min(1, anomaly / 2)))
+      const finalColor = color.clone().lerp(tipColor, t)
+      colors.push(finalColor.r, finalColor.g, finalColor.b, alpha)
+    }
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 4)) // 4 for RGBA
+    geo.attributes.position.needsUpdate = true
+    geo.computeVertexNormals()
+    return geo
+  }, [temperature, anomaly])
+
+  const center = new THREE.Vector3(0, 0, 0)
+  const position = new THREE.Vector3(x, y, z)
+  const normal = position.clone().sub(center).normalize()
+
+  const quaternion = useMemo(() => {
+    const q = new THREE.Quaternion()
+    q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
+    return q
+  }, [x, y, z])
+
+  return (
+    <mesh
+      position={[x, y, z]}
+      geometry={geometry}
+      quaternion={quaternion}
+    >
+      <meshStandardMaterial
+        vertexColors
+        transparent
+        opacity={0.85}
+        roughness={0.5}
+        metalness={0.2}
+      />
+    </mesh>
+  )
+}
+
+function RotatingGlobeGroup({ isInteracting, year }) {
+  const globeGroupRef = useRef<THREE.Group>(null)
+  const regions = getRegionsWithAnomalies(year)
+
+  useFrame(() => {
+    if (globeGroupRef.current && !isInteracting) {
+      globeGroupRef.current.rotation.y += 0.001
+    }
+  })
+
+  return (
+    <group ref={globeGroupRef}>
+      <Earth />
+      <DataPoints />
+      {regions.map((region) =>
+        region.coords ? (
+          <HeatSurfaceRegion
+            key={region.name}
+            lat={region.coords.lat}
+            lon={region.coords.lon}
+            temperature={region.temperature}
+            anomaly={region.anomaly}
+          />
+        ) : null
+      )}
+    </group>
+  )
+}
+
 export function GlobeScene() {
   const [mounted, setMounted] = useState(false)
-
+  const [isInteracting, setIsInteracting] = useState(false)
+  const { year } = useClimateStore()
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -250,16 +354,12 @@ export function GlobeScene() {
         gl={{ alpha: true, antialias: true }}
         style={{ background: "transparent" }}
       >
-        {/* Dynamic lighting setup */}
         <ambientLight intensity={0.3} />
-        {/* Sun light from the right */}
         <directionalLight position={[10, 5, 5]} intensity={1.5} color="#ffffee" />
-        {/* Subtle fill light from the left */}
         <directionalLight position={[-8, -3, -5]} intensity={0.4} color="#4a9eff" />
 
         <Stars />
-        <Earth />
-        <DataPoints />
+        <RotatingGlobeGroup isInteracting={isInteracting} year={year} />
 
         <OrbitControls
           enableZoom={true}
@@ -270,6 +370,8 @@ export function GlobeScene() {
           rotateSpeed={0.5}
           enableDamping={true}
           dampingFactor={0.05}
+          onStart={() => setIsInteracting(true)}
+          onEnd={() => setIsInteracting(false)}
         />
       </Canvas>
     </div>
