@@ -67,7 +67,7 @@ export async function getLayerData(year: number, layer: Layer): Promise<GlobeLay
 export async function getYearInsight(
   year: number,
   layer: Layer,
-  selection?: { lat: number; lon: number; value?: number },
+  selection?: { lat: number; lon: number; value?: number; region?: string },
 ): Promise<YearInsight> {
   await new Promise((resolve) => setTimeout(resolve, 200))
 
@@ -154,74 +154,167 @@ export async function getYearInsight(
   }
 }
 
-/**
- * Enhanced chatbot with real climate data
- */
-export async function sendChatMessage(message: string, currentYear?: number, currentRegion?: string): Promise<string> {
+export async function sendChatMessage(
+  message: string,
+  currentYear?: number,
+  currentRegion?: string,
+): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 800))
 
-  const lowerMessage = message.toLowerCase()
+  // pasamos todo a minúsculas y quitamos tildes
+  const lowerMessage = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 
-  // Context-aware responses based on current region
+  const isFuture = currentYear && currentYear > new Date().getFullYear()
+
+  // ---------- SALUDOS ----------
+  if (
+    lowerMessage.includes("hola") ||
+    lowerMessage.includes("buenas") ||
+    lowerMessage.includes("buen dia") ||
+    lowerMessage.includes("buenos dias") ||
+    lowerMessage.includes("buenas tardes") ||
+    lowerMessage.includes("buenas noches") ||
+    lowerMessage.includes("hey") ||
+    lowerMessage.includes("que tal")
+  ) {
+    return "🌱 Hola, soy tu EcoGuía IA. Puedo explicarte el cambio climático con datos reales y contarte qué pasa en Sudamérica, Centroamérica y Europa. Pregúntame lo que quieras."
+  }
+
+  if (lowerMessage.includes("gracias")) {
+    return "💚 Gracias a ti por interesarte en el clima. Informarse ya es un primer paso para cambiar la historia que ves en estos datos."
+  }
+
+  // ---------- CAMBIO CLIMÁTICO / CONTAMINACIÓN ----------
+  if (
+    lowerMessage.includes("cambio climatico") ||
+    lowerMessage.includes("calentamiento global") ||
+    lowerMessage.includes("por que se calienta") ||
+    lowerMessage.includes("que es el clima")
+  ) {
+    return "🌍 El cambio climático es el calentamiento anormal y rápido del planeta causado sobre todo por actividades humanas: quemar combustibles fósiles, talar bosques y producir demasiada basura. Eso altera las estaciones y hace más probables sequías, inundaciones e incendios."
+  }
+
+  if (
+    lowerMessage.includes("contaminacion") ||
+    lowerMessage.includes("co2") ||
+    lowerMessage.includes("emisiones")
+  ) {
+    return "🌫️ La contaminación, especialmente el CO₂, actúa como una manta que atrapa el calor alrededor de la Tierra. Cuanto más contaminamos, más se calienta el planeta. Reducir emisiones, usar energías limpias y proteger bosques ayuda a frenar esa manta de calor."
+  }
+
+  if (
+    lowerMessage.includes("ira a peor") ||
+    lowerMessage.includes("todo ira a peor") ||
+    lowerMessage.includes("estamos a tiempo") ||
+    lowerMessage.includes("hay esperanza") ||
+    lowerMessage.includes("futuro")
+  ) {
+    return "⏳ Los datos muestran una tendencia clara: cada década hace más calor y los extremos son más frecuentes. Si seguimos igual irá a peor, pero no está decidido: políticas climáticas, cambios en cómo producimos energía y acciones comunitarias pueden frenar esa curva."
+  }
+
+  if (
+    lowerMessage.includes("que puedo hacer") ||
+    lowerMessage.includes("como ayudar") ||
+    lowerMessage.includes("acciones") ||
+    lowerMessage.includes("hacer algo")
+  ) {
+    return "🤲 Tres acciones con mucho impacto: 1) usar menos energía y apoyar renovables, 2) elegir transporte más limpio (caminar, bici, transporte público), 3) cuidar y defender bosques y áreas verdes. Y hablar del tema para que más personas se sumen."
+  }
+
+  // ---------- CONTEXTO DE REGION + AÑO ----------
   if (currentRegion) {
     const region = getRegion(currentRegion)
     const variable = region?.variables.find((v) => v.id === "t2m")
 
     if (
       variable &&
-      (lowerMessage.includes("región") || lowerMessage.includes("esta zona") || lowerMessage.includes("aquí"))
+      (lowerMessage.includes("region") ||
+        lowerMessage.includes("esta zona") ||
+        lowerMessage.includes("aqui") ||
+        lowerMessage.includes("aqui") ||
+        lowerMessage.includes("datos"))
     ) {
-      return `${currentRegion} tiene una temperatura base de ${variable.baseline_1981_2010_c.toFixed(1)}°C (período 1981-2010). Se está calentando ${(variable.trend_c_per_year * 10).toFixed(2)}°C por década. Se han registrado ${variable.extremes.high_anomaly_months_gt_2sigma.length} meses con calor extremo y ${variable.extremes.low_anomaly_months_lt_minus_2sigma.length} con frío extremo.`
+      const base = variable.baseline_1981_2010_c
+      const trendDecade = variable.trend_c_per_year * 10
+      const highExtremes = variable.extremes?.high_anomaly_months_gt_2sigma?.length ?? 0
+      const lowExtremes = variable.extremes?.low_anomaly_months_lt_minus_2sigma?.length ?? 0
+
+      let yearPart = ""
+      if (currentYear) {
+        const deltaYears = currentYear - 1981
+        const approxAnomaly = variable.trend_c_per_year * deltaYears
+        yearPart = isFuture
+          ? ` Si extrapolamos la tendencia, para ${currentYear} esta región podría estar alrededor de +${approxAnomaly.toFixed(
+              2,
+            )}°C sobre su clima “normal”.`
+          : ` Alrededor de ${currentYear}, esta región ya acumula aproximadamente +${approxAnomaly.toFixed(
+              2,
+            )}°C respecto a 1981.`
+      }
+
+      return `📍 ${currentRegion}: su temperatura media “normal” era de ${base.toFixed(
+        1,
+      )}°C en 1981–2010. Se está calentando unos ${trendDecade.toFixed(
+        2,
+      )}°C por década. Hasta ahora se han registrado ${highExtremes} meses con calor extremo y ${lowExtremes} con frío extremo.${yearPart}`
     }
   }
 
-  if (lowerMessage.includes("hola") || lowerMessage.includes("ayuda")) {
-    return "Hola, soy tu guía climático. Puedo explicarte los datos reales que ves en el globo. Selecciona una región (Sudamérica, Centroamérica, Europa) para información específica."
-  }
-
-  if (lowerMessage.includes("temperatura") || lowerMessage.includes("calor")) {
-    return "La anomalía térmica muestra cuánto más cálido está cada región comparado con 1981-2010. Los datos son reales: Sudamérica +0.015°C/año, Centroamérica +0.021°C/año, Europa +0.040°C/año. Cada décima importa."
-  }
-
-  if (lowerMessage.includes("sudamérica") || lowerMessage.includes("sudamerica")) {
+  // ---------- REGIONES ESPECÍFICAS POR NOMBRE ----------
+  if (lowerMessage.includes("sudamerica") || lowerMessage.includes("sudamérica")) {
     const variable = getRegionVariable("Sudamérica", "t2m")
     if (variable) {
-      return `Sudamérica: temperatura base ${variable.baseline_1981_2010_c.toFixed(1)}°C. Tendencia de calentamiento: ${(variable.trend_c_per_year * 10).toFixed(2)}°C por década. ${variable.extremes.high_anomaly_months_gt_2sigma.length} meses de calor extremo registrados desde 1981.`
+      const highExtremes = variable.extremes?.high_anomaly_months_gt_2sigma?.length ?? 0
+      return `🌎 Sudamérica: temperatura base ${variable.baseline_1981_2010_c.toFixed(
+        1,
+      )}°C y calentamiento aproximado de ${(variable.trend_c_per_year * 10).toFixed(
+        2,
+      )}°C por década. Se han observado al menos ${highExtremes} meses con calor extremo desde 1981.`
     }
   }
 
-  if (lowerMessage.includes("centroamérica") || lowerMessage.includes("centroamerica")) {
+  if (lowerMessage.includes("centroamerica") || lowerMessage.includes("centroamérica")) {
     const variable = getRegionVariable("Centroamérica", "t2m")
     if (variable) {
-      return `Centroamérica: temperatura base ${variable.baseline_1981_2010_c.toFixed(1)}°C. Calentamiento de ${(variable.trend_c_per_year * 10).toFixed(2)}°C por década, una de las tasas más altas. ${variable.extremes.high_anomaly_months_gt_2sigma.length} eventos extremos de calor documentados.`
+      const highExtremes = variable.extremes?.high_anomaly_months_gt_2sigma?.length ?? 0
+      return `🌴 Centroamérica: una región ya muy cálida, con base de ${variable.baseline_1981_2010_c.toFixed(
+        1,
+      )}°C y subida de ${(variable.trend_c_per_year * 10).toFixed(
+        2,
+      )}°C por década. ${highExtremes} meses de calor extremo indican noches más calurosas y más presión sobre agricultura y bosques.`
     }
   }
 
   if (lowerMessage.includes("europa")) {
     const variable = getRegionVariable("Europa", "t2m")
     if (variable) {
-      return `Europa: temperatura base ${variable.baseline_1981_2010_c.toFixed(1)}°C. Calentamiento acelerado de ${(variable.trend_c_per_year * 10).toFixed(2)}°C por década, el más rápido de las tres regiones. ${variable.extremes.high_anomaly_months_gt_2sigma.length} meses extremos.`
+      const highExtremes = variable.extremes?.high_anomaly_months_gt_2sigma?.length ?? 0
+      return `🌍 Europa: temperatura base ${variable.baseline_1981_2010_c.toFixed(
+        1,
+      )}°C, pero se calienta muy rápido: ${(variable.trend_c_per_year * 10).toFixed(
+        2,
+      )}°C por década. Los ${highExtremes} meses de calor extremo explican olas de calor e incendios cada vez más frecuentes.`
     }
   }
 
-  if (lowerMessage.includes("extremo") || lowerMessage.includes("récord")) {
-    return "Los meses extremos son aquellos con anomalías >2σ (desviaciones estándar). Notarás que desde 2015 los eventos de calor extremo se aceleran dramáticamente en todas las regiones. Esto no es coincidencia."
+  // ---------- EXTREMOS / RÉCORDS ----------
+  if (lowerMessage.includes("extremo") || lowerMessage.includes("record") || lowerMessage.includes("récord")) {
+    return "🔥 Llamamos meses extremos a los que se desvían más de 2 desviaciones estándar de lo normal. Antes eran raros; desde 2015 aparecen una y otra vez, señal de que el clima está saliéndose de los patrones habituales."
   }
 
-  if (lowerMessage.includes("futuro") || lowerMessage.includes("2030") || lowerMessage.includes("2035")) {
-    return "Las proyecciones usan la tendencia histórica. Si mantenemos el ritmo actual, Europa podría estar +2°C más cálida en 2035 respecto a 1981. Pero el futuro depende de nuestras acciones hoy."
+  // ---------- POR DEFECTO: RESPUESTA EDUCATIVA ----------
+  if (lowerMessage.includes("explica") || lowerMessage.includes("datos") || lowerMessage.includes("grafica")) {
+    return "📈 Las líneas y colores que ves comparan el clima actual con el período 1981–2010. Mientras más rojo, más se aleja de lo normal. No es un simple ciclo: la tendencia es clara y ascendente."
   }
 
-  if (lowerMessage.includes("hacer") || lowerMessage.includes("ayudar") || lowerMessage.includes("qué puedo")) {
-    return "Los datos son claros: el calentamiento es real y medible. Puedes actuar: reduce emisiones, apoya energías renovables, conserva recursos. Cada acción cuenta para cambiar estas tendencias."
-  }
-
-  // Default educational response
-  const responses = [
-    "Explora las tres regiones en el globo: Sudamérica, Centroamérica y Europa. Cada una tiene datos climáticos reales desde 1981.",
-    "Los datos que ves provienen de análisis científicos reales. Usa la línea de tiempo para ver cómo ha cambiado el clima en décadas recientes.",
-    "Haz clic en una región del globo para ver sus estadísticas específicas: temperatura base, tendencia de calentamiento y eventos extremos.",
+  const genericResponses = [
+    "Puedes mover la línea de tiempo y hacer clic en una región del globo. Yo te explico cómo han cambiado sus temperaturas y qué significa para las comunidades.",
+    "Lo que ves en EcoVig-IA no son opiniones, son datos. Y nos dicen que el calentamiento es real y acelerado. La buena noticia: todavía podemos cambiar la curva.",
+    "Si quieres, pregúntame por Sudamérica, Centroamérica o Europa y te cuento su historia climática desde 1981.",
   ]
 
-  return responses[Math.floor(Math.random() * responses.length)]
+  return genericResponses[Math.floor(Math.random() * genericResponses.length)]
 }
